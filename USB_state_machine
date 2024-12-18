@@ -1,0 +1,96 @@
+module USB_state_machine (
+    input wire clk,                  // Clock signal
+    input wire reset,                // Reset signal
+    input wire packet_valid,         // Indicates a valid packet is received
+    input wire [3:0] pid,            // Packet ID (PID) from the packet parser
+    input wire [6:0] address,        // USB address
+    input wire [3:0] endpoint,       // Endpoint number for processing data
+    input wire [7:0] data,           // Data byte from the parser
+    output reg [3:0] active_endpoint, // Endpoint to be activated based on current state
+    output reg [6:0] current_address // Current USB address
+);
+
+    // Define states for USB state machine
+    reg [2:0] state;
+    localparam POWERED = 3'd0,    // Device is powered but not initialized
+               DEFAULT = 3'd1,    // Default state (address 0, waiting for address assignment)
+               ADDRESS = 3'd2,    // Device has been assigned a non-zero address
+               CONFIGURED = 3'd3; // Device is configured and endpoints are active
+
+    // State machine to handle packet processing and endpoint activation
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            state <= POWERED;            // Start in the powered state after reset
+            active_endpoint <= 4'd0;     // No active endpoint at reset
+            current_address <= 7'd0;     // Default address 0
+        end else begin
+            case (state)
+                POWERED: begin
+                    if (packet_valid) begin
+                        // Upon receiving a valid packet, transition to DEFAULT state
+                        state <= DEFAULT;
+                    end
+                end
+
+                DEFAULT: begin
+                    if (packet_valid) begin
+                        // Process SETUP packet for address assignment
+                        if (pid == 4'b1101) begin // SETUP packet
+                            if (address == 7'd0) begin // Default address
+                                // If address assignment packet is received, go to ADDRESS state
+                                state <= ADDRESS;
+                            end
+                        end
+                    end
+                end
+
+                ADDRESS: begin
+                    if (packet_valid) begin
+                        // After address assignment, transition to CONFIGURED state
+                        if (pid == 4'b1101) begin // SETUP packet
+                            state <= CONFIGURED;  // Transition to CONFIGURED state
+                        end
+                    end
+                end
+
+                CONFIGURED: begin
+                    if (packet_valid) begin
+                        // Process different packet types based on PID
+                        case (pid)
+                            4'b1101: begin // SETUP packet
+                                // Handle configuration requests (e.g., descriptors)
+                                if (endpoint == 4'd0) begin
+                                    active_endpoint <= 4'd0;  // Endpoint 0 is usually used for control transfers
+                                end
+                            end
+
+                            4'b1001: begin // IN packet (device sending data to host)
+                                if (endpoint == 4'd1) begin
+                                    active_endpoint <= 4'd1;  // Activate endpoint 1 to send data
+                                end
+                            end
+
+                            4'b0001: begin // OUT packet (host sending data to device)
+                                if (endpoint == 4'd1) begin
+                                    active_endpoint <= 4'd1;  // Activate endpoint 1 to receive data
+                                end
+                            end
+
+                            default: begin
+                                // Handle other PIDs or unexpected packets
+                                active_endpoint <= 4'd0;  // Default to no active endpoint
+                            end
+                        endcase
+                    end
+                end
+
+                default: begin
+                    // Return to POWERED state on any unexpected condition
+                    state <= POWERED;
+                    active_endpoint <= 4'd0;  // No active endpoint
+                end
+            endcase
+        end
+    end
+
+endmodule
