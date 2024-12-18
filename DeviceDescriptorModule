@@ -1,0 +1,41 @@
+module DeviceDescriptorModule(
+    input wire clk,                // System clock
+    input wire reset,              // Reset signal
+    input wire request_valid,      // Signal indicating a GET_DESCRIPTOR request
+    input wire [7:0] descriptor_type, // Descriptor type (e.g., 0x01 for device descriptor)
+    input wire [7:0] byte_index,   // Byte index to fetch from the descriptor
+    output reg [7:0] descriptor_data, // Output data (one byte of the descriptor)
+    output reg data_ready          // Signal indicating data is ready
+);
+
+    // Descriptor type for Device Descriptor (0x01)
+    localparam DEVICE_DESCRIPTOR_TYPE = 8'h01;
+
+    // USB Device Descriptor
+    localparam [7:0] DEVICE_DESCRIPTOR [0:17] = {
+        8'h12, 8'h01, 8'h00, 8'h02,
+        8'h00, 8'h00, 8'h00, 8'h40,
+        8'h6A, 8'h0A, 8'h34, 8'h12,
+        8'h00, 8'h01, 8'h01, 8'h02,
+        8'h03, 8'h01
+    };
+
+    // Internal signal to hold descriptor data
+    reg [7:0] internal_data;
+
+    // Output logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            descriptor_data <= 8'h00;
+            data_ready <= 1'b0;
+        end else if (request_valid && descriptor_type == DEVICE_DESCRIPTOR_TYPE) begin
+            // Fetch the requested byte from the descriptor
+            internal_data <= DEVICE_DESCRIPTOR[byte_index];
+            descriptor_data <= DEVICE_DESCRIPTOR[byte_index];
+            data_ready <= 1'b1; // Indicate data is ready
+        end else begin
+            data_ready <= 1'b0; // Default state
+        end
+    end
+
+endmodule
