@@ -1,0 +1,14 @@
+module USB_Multiplexer (
+    input wire [7:0] state,
+    input wire [7:0] endpoint_0_data,
+    input wire [7:0] interrupt_data,
+    output reg [7:0] selected_data
+);
+    always @(*) begin
+        case (state)
+            8'h00: selected_data = endpoint_0_data;  // Default to Endpoint 0
+            8'h01: selected_data = interrupt_data;  // Switch to Interrupt Endpoint
+            default: selected_data = 8'd0;
+        endcase
+    end
+endmodule
