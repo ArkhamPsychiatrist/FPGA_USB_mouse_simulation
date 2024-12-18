@@ -1,0 +1,124 @@
+module interrupt_endpoint (
+    input wire clk,                    // System clock
+    input wire reset,                  // Reset signal
+    input wire [7:0] data_in,          // Data received from host (OUT endpoint)
+    input wire data_in_valid,          // Data valid signal for OUT endpoint
+    input wire [7:0] data_out,         // Data to be sent to host (IN endpoint)
+    input wire data_out_ready,         // Data ready signal for IN endpoint
+    input wire endpoint_address,       // Endpoint address (should be 1 for IN or OUT interrupt endpoint)
+    input wire [7:0] interval,         // Polling interval (ms)
+    output reg [7:0] response_data,    // Data to be sent back to the host (IN endpoint)
+    output reg response_valid,         // Response data valid signal for IN endpoint
+    output reg endpoint_stall         // Stall condition (if needed)
+);
+
+    // State definitions for handling interrupt transfers
+    typedef enum reg [1:0] {
+        IDLE = 2'b00,
+        WAIT_FOR_IN = 2'b01,
+        SEND_OUT = 2'b10,
+        STALLED = 2'b11
+    } state_t;
+
+    state_t current_state, next_state;
+
+    // Temporary storage for incoming and outgoing data
+    reg [7:0] data_buffer;
+
+    // Polling mechanism to handle the interrupt interval
+    reg [7:0] counter;   // Counter to track the polling interval
+
+    // Interrupt endpoint state machine
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            current_state <= IDLE;
+            response_valid <= 1'b0;
+            endpoint_stall <= 1'b0;
+            data_buffer <= 8'd0;
+            counter <= 8'd0;
+        end else begin
+            current_state <= next_state;
+        end
+    end
+
+    // Polling counter logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            counter <= 8'd0;
+        end else if (counter == interval) begin
+            counter <= 8'd0;
+        end else begin
+            counter <= counter + 1;
+        end
+    end
+
+    // Next state logic
+    always @(*) begin
+        case (current_state)
+            IDLE: begin
+                if (data_in_valid && endpoint_address == 8'd1) begin
+                    next_state = SEND_OUT;  // Received data from OUT endpoint
+                end else if (data_out_ready && endpoint_address == 8'd1) begin
+                    next_state = WAIT_FOR_IN;  // Send data from IN endpoint
+                end else begin
+                    next_state = IDLE;
+                end
+            end
+            WAIT_FOR_IN: begin
+                if (data_out_ready) begin
+                    next_state = SEND_OUT;
+                end else if (counter == interval) begin
+                    next_state = SEND_OUT;  // Timeout for polling interval, send data
+                end else begin
+                    next_state = WAIT_FOR_IN;
+                end
+            end
+            SEND_OUT: begin
+                if (data_in_valid) begin
+                    next_state = WAIT_FOR_IN;
+                end else begin
+                    next_state = SEND_OUT;
+                end
+            end
+            STALLED: begin
+                next_state = STALLED;
+            end
+            default: begin
+                next_state = IDLE;
+            end
+        endcase
+    end
+
+    // Data transmission logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            response_data <= 8'd0;
+            response_valid <= 1'b0;
+            endpoint_stall <= 1'b0;
+        end else if (current_state == SEND_OUT) begin
+            response_data <= data_out; // Send data from IN endpoint
+            response_valid <= 1'b1;
+        end else if (current_state == WAIT_FOR_IN) begin
+            if (data_in_valid) begin
+                data_buffer <= data_in; // Store received data
+                response_valid <= 1'b0;
+            end else begin
+                response_valid <= 1'b0;
+            end
+        end else begin
+            response_valid <= 1'b0;  // Default state
+        end
+    end
+
+    // Endpoint stall condition (if needed)
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            endpoint_stall <= 1'b0;
+        end else if (current_state == STALLED) begin
+            endpoint_stall <= 1'b1;
+        end else begin
+            endpoint_stall <= 1'b0;
+        end
+    end
+
+endmodule
