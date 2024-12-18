@@ -1,0 +1,75 @@
+module ULPI_interface_write_register (
+    input wire enable,
+    input wire clk,                 // 60 MHz clock
+    input wire rstn,               // Active low reset
+
+    // ULPI control signals
+    output reg [7:0] DATA,     
+    input wire DIR,            // Direction: PHY -> FPGA (1), FPGA -> PHY (0)
+    input wire NXT,            // PHY signals more data
+    output reg STP,            // Stop signal to PHY
+
+    // hand of higher being
+    input wire [3:0] index_counter, // Adjust bit-width based on expected range
+    input wire [127:0] data_library // Example: A 128-bit register holding multiple 8-bit entries
+);
+
+    //FSM
+    reg [1:0] state;         
+    reg [1:0] next;
+
+    parameter IDLE=2'b00, TXCMD=2'b01, UPLOAD_DATA=2'b10, ONE_AFTER=2'b11;
+
+    // next state logic
+    always @(*) begin
+        case (state) 
+            IDLE: next = (enable)? TXCMD: IDLE;
+            TXCMD: next = (NXT)? UPLOAD_DATA: TXCMD;
+            UPLOAD_DATA: next = ONE_AFTER;
+            ONE_AFTER: next = IDLE;
+            default: next = IDLE;
+        endcase
+    end
+
+    // state transition
+    always @(posedge clk or negedge rstn) begin
+        if (!rstn) begin
+            state <= IDLE;
+        end else 
+            state <= next;
+    end
+
+    // output actions
+    always @(*) begin
+        case (state) 
+            
+            // Default values to avoid latches
+            DATA = 8'bzzzzzzzz;
+            STP = 1'b0;
+
+            IDLE: begin
+                DATA = 8'bzzzzzzzz;
+                STP = 1'b0;
+            end
+
+            TXCMD: begin
+                DATA = data_library[(index_counter * 8) +: 8];
+                STP = 1'b0;
+            end
+
+            UPLOAD_DATA: begin
+                DATA = data_library[((index_counter+1) * 8) +: 8];
+                STP = 1'b0;
+            end
+
+            ONE_AFTER: begin
+                DATA = 8'bzzzzzzzz;
+                STP = 1'b1;
+            end
+
+            default: begin
+                DATA = 8'bzzzzzzzz; 
+                STP = 1'b0;
+            end
+    end
+endmodule
