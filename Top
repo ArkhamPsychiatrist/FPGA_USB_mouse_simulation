@@ -1,0 +1,45 @@
+module USB_Device (
+    input wire clk,
+    input wire reset,
+    input wire [7:0] host_data,
+    input wire host_data_valid,
+    output wire [7:0] response_data,
+    output wire response_valid
+);
+    // Instantiate modules
+    wire [7:0] state;
+    wire [7:0] descriptor_data;
+    wire [7:0] selected_data;
+
+    USB_state_machine usb_sm (
+        .clk(clk),
+        .reset(reset),
+        .request_code(host_data),
+        .current_state(state)
+    );
+
+    USB_Packet_Parser parser (
+        .clk(clk),
+        .reset(reset),
+        .packet_in(host_data),
+        .packet_valid(host_data_valid),
+        .request_code(),
+        .descriptor_index()
+    );
+
+    Interrupt_Endpoint int_ep (
+        .clk(clk),
+        .reset(reset),
+        .descriptor_data_in(),
+        .descriptor_request_valid(),
+        .response_data(response_data),
+        .response_valid(response_valid)
+    );
+
+    USB_Multiplexer mux (
+        .state(state),
+        .endpoint_0_data(),
+        .interrupt_data(response_data),
+        .selected_data(selected_data)
+    );
+endmodule
