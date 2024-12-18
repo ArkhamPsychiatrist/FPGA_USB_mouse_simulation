@@ -1,0 +1,65 @@
+module ULPI_interface_read_register (
+    input wire enable,
+    input wire clk,                 // 60 MHz clock
+    input wire rstn,                // Active low reset
+
+    // ULPI control signals
+    input wire [7:0] DATA,     
+    input wire DIR,                 // Direction: PHY -> FPGA (1), FPGA -> PHY (0)
+    input wire NXT,                 // PHY signals more data
+
+    // hand of higher being
+    input wire [3:0] index_counter, // Adjust bit-width based on expected range
+    input wire [127:0] data_library, // Example: A 128-bit register holding multiple 8-bit entries
+
+    output wire led_s,
+    output wire led_f
+);
+
+    // Internal register to store received data
+    reg [7:0] STORED_DATA;
+
+    // FSM states
+    reg [2:0] state;         
+    reg [2:0] next;
+
+    // State encoding
+    localparam IDLE         = 3'b000,
+               TXCMD        = 3'b001,
+               T_A1         = 3'b010,
+               READING_DATA = 3'b011,
+               T_A2         = 3'b100,
+               ERROR        = 3'b101,
+               IDLE_S       = 3'b110;
+
+    // State transition logic
+    always @(*) begin
+        case (state) 
+            IDLE:          next = (enable) ? TXCMD : IDLE;
+            TXCMD:         next = (NXT) ? T_A1 : TXCMD;
+            T_A1:          next = (DIR) ? READING_DATA : ERROR;
+            READING_DATA:  next = (DIR) ? T_A2 : ERROR;
+            T_A2:          next = (STORED_DATA == data_library[(index_counter + 1) * 8 +: 8]) ? IDLE_S : ERROR;
+            default:       next = IDLE;
+        endcase
+    end
+
+    // State transition and STORED_DATA update logic
+    always @(posedge clk or negedge rstn) begin
+        if (!rstn) begin
+            state <= IDLE;
+            STORED_DATA <= 8'bzzzzzzzz;  // Reset stored data
+        end else begin
+            state <= next;
+            // Update STORED_DATA only in the READING_DATA state
+            if (state == READING_DATA) begin
+                STORED_DATA <= DATA;
+            end
+        end
+    end
+
+    // Output signals
+    assign led_s = (state == IDLE_S);
+    assign led_f = (state == ERROR);
+
+endmodule
