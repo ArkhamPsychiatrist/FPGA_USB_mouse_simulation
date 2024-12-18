@@ -1,0 +1,73 @@
+module ConfigurationDescriptorModule (
+    input wire clk,                         // System clock
+    input wire reset,                       // Reset signal
+    input wire [7:0] descriptor_request,    // Requested byte index
+    input wire request_valid,               // Request is valid
+    output reg [7:0] descriptor_data,       // Byte of descriptor to output
+    output reg data_ready                   // Data ready signal
+);
+
+    // Parameters for Configuration Descriptor
+    localparam CONFIG_TOTAL_LENGTH = 34;    // Total length of configuration descriptor (adjusted)
+    localparam NUM_INTERFACES = 1;          // Number of interfaces in this configuration
+
+    // Configuration Descriptor Data
+    reg [7:0] configuration_descriptor [0:CONFIG_TOTAL_LENGTH-1];
+
+    initial begin
+        // Configuration Descriptor Header
+        configuration_descriptor[0] = 8'd9;     // bLength: Descriptor size
+        configuration_descriptor[1] = 8'd2;     // bDescriptorType: CONFIGURATION
+        configuration_descriptor[2] = CONFIG_TOTAL_LENGTH[7:0]; // wTotalLength (LSB)
+        configuration_descriptor[3] = CONFIG_TOTAL_LENGTH[15:8]; // wTotalLength (MSB)
+        configuration_descriptor[4] = NUM_INTERFACES; // bNumInterfaces
+        configuration_descriptor[5] = 8'd1;     // bConfigurationValue
+        configuration_descriptor[6] = 8'd0;     // iConfiguration (index of string descriptor)
+        configuration_descriptor[7] = 8'b10000000; // bmAttributes: Bus powered
+        configuration_descriptor[8] = 8'd50;    // bMaxPower (100 mA)
+
+        // Interface Descriptor
+        configuration_descriptor[9]  = 8'd9;    // bLength: Descriptor size
+        configuration_descriptor[10] = 8'd4;    // bDescriptorType: INTERFACE
+        configuration_descriptor[11] = 8'd0;    // bInterfaceNumber
+        configuration_descriptor[12] = 8'd0;    // bAlternateSetting
+        configuration_descriptor[13] = 8'd1;    // bNumEndpoints
+        configuration_descriptor[14] = 8'd3;    // bInterfaceClass: HID
+        configuration_descriptor[15] = 8'd0;    // bInterfaceSubClass
+        configuration_descriptor[16] = 8'd0;    // bInterfaceProtocol
+        configuration_descriptor[17] = 8'd0;    // iInterface (index of string descriptor)
+
+        // HID Descriptor
+        configuration_descriptor[18] = 8'd9;    // bLength: Descriptor size
+        configuration_descriptor[19] = 8'd33;   // bDescriptorType: HID (0x21)
+        configuration_descriptor[20] = 8'd0;    // bcdHID (LSB): HID Class Spec version 1.11
+        configuration_descriptor[21] = 8'd1;    // bcdHID (MSB)
+        configuration_descriptor[22] = 8'd0;    // bCountryCode: Not localized
+        configuration_descriptor[23] = 8'd1;    // bNumDescriptors: Number of class descriptors
+        configuration_descriptor[24] = 8'd34;   // bDescriptorType: Report (0x22)
+        configuration_descriptor[25] = 8'd52;   // wDescriptorLength (LSB): Length of report descriptor
+        configuration_descriptor[26] = 8'd0;    // wDescriptorLength (MSB)
+
+        // Endpoint Descriptor
+        configuration_descriptor[27] = 8'd7;    // bLength: Descriptor size
+        configuration_descriptor[28] = 8'd5;    // bDescriptorType: ENDPOINT
+        configuration_descriptor[29] = 8'b10000001; // bEndpointAddress: IN, Endpoint 1
+        configuration_descriptor[30] = 8'd3;    // bmAttributes: Interrupt
+        configuration_descriptor[31] = 8'd8;    // wMaxPacketSize (LSB)
+        configuration_descriptor[32] = 8'd0;    // wMaxPacketSize (MSB)
+        configuration_descriptor[33] = 8'd10;   // bInterval: Polling interval (ms)
+    end
+
+    // Logic to provide requested descriptor data
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            descriptor_data <= 8'd0;
+            data_ready <= 1'b0;
+        end else if (request_valid) begin
+            descriptor_data <= configuration_descriptor[descriptor_request];
+            data_ready <= 1'b1;
+        end else begin
+            data_ready <= 1'b0;
+        end
+    end
+endmodule
